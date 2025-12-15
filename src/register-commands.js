@@ -59,6 +59,20 @@ const commands = [
                     { name: '發送活動總結', value: 'summary' }
                 )
         ),
+
+    new SlashCommandBuilder()
+        .setName('syncmembers')
+        .setDescription('同步伺服器成員名單到 Google Sheets')
+        .addStringOption(option =>
+            option
+                .setName('mode')
+                .setDescription('同步模式')
+                .setRequired(false)
+                .addChoices(
+                    { name: '新增（只加入新成員）', value: 'add' },
+                    { name: '完整同步（更新所有成員）', value: 'full' }
+                )
+        ),
 ].map(command => command.toJSON());
 
 async function registerCommands() {

@@ -205,9 +205,112 @@ async function getTodayStats() {
     return { date: today, onTime, late, absent };
 }
 
+// 同步成員名單到表格
+async function syncMembers(members, mode = 'add') {
+    await initialize();
+
+    const data = await getSheetData();
+
+    // 確保有標題列
+    if (data.length === 0) {
+        data.push(['成員', '出席次數']);
+    }
+
+    const headerRow = data[0];
+
+    // 建立現有成員名稱到列索引的映射（處理帶有「(離)」標記的情況）
+    const existingMembers = new Map();
+    for (let i = 1; i < data.length; i++) {
+        if (data[i] && data[i][0]) {
+            const name = data[i][0];
+            // 儲存原始名稱（去掉「(離)」標記）
+            const cleanName = name.replace(/\(離\)$/, '').trim();
+            existingMembers.set(cleanName, i);
+        }
+    }
+
+    const stats = {
+        added: [],
+        returned: [],  // 回歸的成員
+        left: [],      // 離開的成員
+        unchanged: 0,
+    };
+
+    // 處理傳入的成員
+    const currentMemberNames = new Set();
+
+    for (const member of members) {
+        const memberName = member.name;
+        currentMemberNames.add(memberName);
+
+        if (existingMembers.has(memberName)) {
+            // 成員已存在
+            const rowIndex = existingMembers.get(memberName);
+            const currentName = data[rowIndex][0];
+
+            // 如果之前標記為離開，現在回來了，移除標記
+            if (currentName.endsWith('(離)')) {
+                data[rowIndex][0] = memberName;
+                stats.returned.push(memberName);
+            } else {
+                stats.unchanged++;
+            }
+        } else {
+            // 新成員
+            const newRow = new Array(headerRow.length).fill('');
+            newRow[0] = memberName;
+            data.push(newRow);
+            stats.added.push(memberName);
+        }
+    }
+
+    // 完整同步模式：標記不在伺服器的成員
+    if (mode === 'full') {
+        for (let i = 1; i < data.length; i++) {
+            if (data[i] && data[i][0]) {
+                const currentName = data[i][0];
+                // 跳過已標記的成員
+                if (currentName.endsWith('(離)')) continue;
+
+                if (!currentMemberNames.has(currentName)) {
+                    // 標記為離開
+                    data[i][0] = `${currentName}(離)`;
+                    stats.left.push(currentName);
+                }
+            }
+        }
+    }
+
+    // 寫回 Google Sheets
+    await sheets.spreadsheets.values.update({
+        spreadsheetId: config.google.sheetId,
+        range: 'A1',
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: data },
+    });
+
+    return stats;
+}
+
+// 取得現有成員名單（不含已離開的）
+async function getExistingMembers() {
+    const data = await getSheetData();
+    const members = [];
+
+    for (let i = 1; i < data.length; i++) {
+        if (data[i] && data[i][0] && !data[i][0].endsWith('(離)')) {
+            members.push(data[i][0]);
+        }
+    }
+
+    return members;
+}
+
 module.exports = {
     initialize,
     recordAttendance,
     getTodayStats,
     getSheetData,
+    syncMembers,
+    getExistingMembers,
 };

@@ -151,6 +151,104 @@ async function handleTest(interaction) {
     }
 }
 
+// 處理 /syncmembers 指令
+async function handleSyncMembers(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const mode = interaction.options.getString('mode') || 'add';
+        const guild = interaction.guild;
+
+        // 抓取所有成員
+        await guild.members.fetch();
+
+        // 定義要抓取的角色
+        const roleNames = ['【會長', '【副會長】', '【幹部】', '【會員】'];
+
+        // 收集成員資料
+        const members = [];
+        const processedIds = new Set();
+
+        for (const roleName of roleNames) {
+            const role = guild.roles.cache.find(r => r.name === roleName);
+            if (!role) continue;
+
+            for (const [memberId, member] of role.members) {
+                // 跳過已處理的成員
+                if (processedIds.has(memberId)) continue;
+                // 跳過機器人
+                if (member.user.bot) continue;
+
+                processedIds.add(memberId);
+                members.push({
+                    name: member.displayName || member.user.username,
+                });
+            }
+        }
+
+        if (members.length === 0) {
+            await interaction.editReply('❌ 找不到任何符合角色的成員（會長/副會長/幹部/會員）');
+            return;
+        }
+
+        // 同步到 Google Sheets
+        const sheets = require('./sheets');
+        const stats = await sheets.syncMembers(members, mode);
+
+        // 建立回覆訊息
+        const embed = new EmbedBuilder()
+            .setTitle('📋 成員同步完成')
+            .setColor(0x00FF00)
+            .addFields(
+                {
+                    name: '📊 統計',
+                    value: [
+                        `伺服器成員: ${members.length} 人`,
+                        `新增: ${stats.added.length} 人`,
+                        `回歸: ${stats.returned.length} 人`,
+                        `離開: ${stats.left.length} 人`,
+                        `未變更: ${stats.unchanged} 人`,
+                    ].join('\n'),
+                    inline: false,
+                }
+            )
+            .setTimestamp();
+
+        // 如果有新增的成員，列出名單
+        if (stats.added.length > 0 && stats.added.length <= 20) {
+            embed.addFields({
+                name: '✅ 新增成員',
+                value: stats.added.join(', '),
+                inline: false,
+            });
+        }
+
+        // 如果有回歸的成員，列出名單
+        if (stats.returned.length > 0 && stats.returned.length <= 20) {
+            embed.addFields({
+                name: '🔄 回歸成員',
+                value: stats.returned.join(', '),
+                inline: false,
+            });
+        }
+
+        // 如果有離開的成員，列出名單
+        if (stats.left.length > 0 && stats.left.length <= 20) {
+            embed.addFields({
+                name: '👋 已離開',
+                value: stats.left.join(', '),
+                inline: false,
+            });
+        }
+
+        await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+        console.error('同步成員失敗:', error);
+        await interaction.editReply(`❌ 同步失敗: ${error.message}`);
+    }
+}
+
 // 處理 /status 指令
 async function handleStatus(interaction) {
     const nextTime = scheduler.getNextRecordTime();
@@ -214,6 +312,9 @@ client.on('interactionCreate', async (interaction) => {
                 break;
             case 'test':
                 await handleTest(interaction);
+                break;
+            case 'syncmembers':
+                await handleSyncMembers(interaction);
                 break;
         }
     } catch (error) {
