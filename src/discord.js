@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ChannelType } = require('discord.js');
 const config = require('../config/config');
 const scheduler = require('./scheduler');
+const rolepicker = require('./rolepicker');
 
 const client = new Client({
     intents: [
@@ -292,8 +293,94 @@ async function handleStatus(interaction) {
     await interaction.reply({ embeds: [embed] });
 }
 
+// 處理 /rolepicker-add 指令
+async function handleRolePickerAdd(interaction) {
+    const role = interaction.options.getRole('role', true);
+    const label = interaction.options.getString('label', true);
+    const emoji = interaction.options.getString('emoji');
+    const style = interaction.options.getString('style');
+
+    try {
+        await rolepicker.addRole({ roleId: role.id, label, emoji, style });
+        await interaction.reply({
+            content: `✅ 已將 **${role.name}** 加入會員組清單（按鈕文字：${label}）。可執行 \`/rolepicker-post\` 更新訊息。`,
+            ephemeral: true,
+        });
+    } catch (err) {
+        await interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
+    }
+}
+
+// 處理 /rolepicker-remove 指令
+async function handleRolePickerRemove(interaction) {
+    const role = interaction.options.getRole('role', true);
+    try {
+        await rolepicker.removeRole(role.id);
+        await interaction.reply({
+            content: `✅ 已從清單移除 **${role.name}**。可執行 \`/rolepicker-post\` 更新訊息。`,
+            ephemeral: true,
+        });
+    } catch (err) {
+        await interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
+    }
+}
+
+// 處理 /rolepicker-list 指令
+async function handleRolePickerList(interaction) {
+    const roles = await rolepicker.listRoles();
+    if (roles.length === 0) {
+        await interaction.reply({ content: '📭 目前沒有設定任何會員組', ephemeral: true });
+        return;
+    }
+    const lines = roles.map((r, i) => {
+        const guildRole = interaction.guild.roles.cache.get(r.roleId);
+        const name = guildRole ? guildRole.name : `(已刪除的身分組 ${r.roleId})`;
+        const emoji = r.emoji ? `${r.emoji} ` : '';
+        return `${i + 1}. ${emoji}**${r.label}** → ${name} [${r.style}]`;
+    });
+    const embed = new EmbedBuilder()
+        .setTitle('🎭 會員組清單')
+        .setColor(0x5865F2)
+        .setDescription(lines.join('\n'));
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
+// 處理 /rolepicker-post 指令
+async function handleRolePickerPost(interaction) {
+    const channel = interaction.channel;
+    if (!channel || channel.type !== ChannelType.GuildText) {
+        await interaction.reply({ content: '❌ 只能在文字頻道發佈會員組選擇訊息', ephemeral: true });
+        return;
+    }
+    try {
+        const result = await rolepicker.postOrUpdateMessage(channel);
+        await interaction.reply({
+            content: result.mode === 'updated'
+                ? '✅ 已更新原有的會員組選擇訊息'
+                : '✅ 已發佈新的會員組選擇訊息',
+            ephemeral: true,
+        });
+    } catch (err) {
+        await interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
+    }
+}
+
 // 監聽指令
 client.on('interactionCreate', async (interaction) => {
+    if (interaction.isButton()) {
+        if (interaction.customId.startsWith(rolepicker.CUSTOM_ID_PREFIX)) {
+            try {
+                await rolepicker.handleButtonClick(interaction);
+            } catch (error) {
+                console.error('按鈕處理錯誤:', error);
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({ content: '❌ 處理按鈕時發生錯誤', ephemeral: true }).catch(() => {});
+                }
+            }
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     try {
@@ -315,6 +402,18 @@ client.on('interactionCreate', async (interaction) => {
                 break;
             case 'syncmembers':
                 await handleSyncMembers(interaction);
+                break;
+            case 'rolepicker-add':
+                await handleRolePickerAdd(interaction);
+                break;
+            case 'rolepicker-remove':
+                await handleRolePickerRemove(interaction);
+                break;
+            case 'rolepicker-list':
+                await handleRolePickerList(interaction);
+                break;
+            case 'rolepicker-post':
+                await handleRolePickerPost(interaction);
                 break;
         }
     } catch (error) {

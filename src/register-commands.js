@@ -1,4 +1,4 @@
-const { REST, Routes, SlashCommandBuilder, ChannelType } = require('discord.js');
+const { REST, Routes, SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 require('dotenv').config();
 
 const commands = [
@@ -73,6 +73,47 @@ const commands = [
                     { name: '完整同步（更新所有成員）', value: 'full' }
                 )
         ),
+
+    new SlashCommandBuilder()
+        .setName('rolepicker-add')
+        .setDescription('新增一個會員組到自助選擇清單')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+        .addRoleOption(option =>
+            option.setName('role').setDescription('要加入清單的身分組').setRequired(true)
+        )
+        .addStringOption(option =>
+            option.setName('label').setDescription('按鈕上顯示的文字').setRequired(true)
+        )
+        .addStringOption(option =>
+            option.setName('emoji').setDescription('按鈕表情符號（可選）').setRequired(false)
+        )
+        .addStringOption(option =>
+            option.setName('style').setDescription('按鈕顏色（可選）').setRequired(false)
+                .addChoices(
+                    { name: '藍色 Primary', value: 'Primary' },
+                    { name: '灰色 Secondary', value: 'Secondary' },
+                    { name: '綠色 Success', value: 'Success' },
+                    { name: '紅色 Danger', value: 'Danger' },
+                )
+        ),
+
+    new SlashCommandBuilder()
+        .setName('rolepicker-remove')
+        .setDescription('從會員組選擇清單移除一個身分組')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+        .addRoleOption(option =>
+            option.setName('role').setDescription('要移除的身分組').setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName('rolepicker-list')
+        .setDescription('列出目前會員組選擇清單')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+
+    new SlashCommandBuilder()
+        .setName('rolepicker-post')
+        .setDescription('在目前頻道發佈或刷新會員組選擇訊息')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
 ].map(command => command.toJSON());
 
 async function registerCommands() {
