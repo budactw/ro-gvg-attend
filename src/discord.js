@@ -293,6 +293,15 @@ async function handleStatus(interaction) {
     await interaction.reply({ embeds: [embed] });
 }
 
+// 處理 /line 指令
+async function handleLine(interaction) {
+    if (!config.line.groupUrl) {
+        await interaction.reply({ content: '❌ 尚未設定 LINE 群組連結', ephemeral: true });
+        return;
+    }
+    await interaction.reply({ content: config.line.groupUrl, ephemeral: true });
+}
+
 // 處理 /rolepicker-add 指令
 async function handleRolePickerAdd(interaction) {
     const role = interaction.options.getRole('role', true);
@@ -402,6 +411,9 @@ client.on('interactionCreate', async (interaction) => {
                 break;
             case 'syncmembers':
                 await handleSyncMembers(interaction);
+                break;
+            case 'line':
+                await handleLine(interaction);
                 break;
             case 'rolepicker-add':
                 await handleRolePickerAdd(interaction);
