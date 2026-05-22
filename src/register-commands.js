@@ -75,6 +75,10 @@ const commands = [
         ),
 
     new SlashCommandBuilder()
+        .setName('line')
+        .setDescription('取得 LINE 群組連結'),
+
+    new SlashCommandBuilder()
         .setName('rolepicker-add')
         .setDescription('新增一個會員組到自助選擇清單')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)

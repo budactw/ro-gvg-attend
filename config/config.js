@@ -11,6 +11,9 @@ module.exports = {
         sheetId: process.env.GOOGLE_SHEET_ID,
         credentialsPath: './credentials.json',
     },
+    line: {
+        groupUrl: process.env.LINE_GROUP_URL,
+    },
     schedule: {
         // 公會戰時間：每週三、日 21:00-22:00 (9:00 PM - 10:00 PM)
         days: [0, 3], // 0 = 週日, 3 = 週三
