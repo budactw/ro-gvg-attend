@@ -299,7 +299,7 @@ async function handleLine(interaction) {
         await interaction.reply({ content: '❌ 尚未設定 LINE 群組連結', ephemeral: true });
         return;
     }
-    await interaction.reply({ content: config.line.groupUrl, ephemeral: true });
+    await interaction.reply({ content: config.line.groupUrl });
 }
 
 // 處理 /rolepicker-add 指令
