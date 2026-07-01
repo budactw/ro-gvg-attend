@@ -41,6 +41,10 @@ async function loadConfig() {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed.roles)) parsed.roles = [];
     if (parsed.message === undefined) parsed.message = null;
+    // 舊資料沒有 exclusive 欄位時，預設為互斥（維持原本會員組行為）
+    for (const r of parsed.roles) {
+        if (r.exclusive === undefined) r.exclusive = true;
+    }
     return parsed;
 }
 
@@ -49,7 +53,7 @@ async function saveConfig(cfg) {
     await fs.writeFile(DATA_FILE, JSON.stringify(cfg, null, 2), 'utf8');
 }
 
-async function addRole({ roleId, label, emoji, style }) {
+async function addRole({ roleId, label, emoji, style, exclusive = true }) {
     const cfg = await loadConfig();
     if (cfg.roles.length >= MAX_ROLES) {
         throw new Error(`會員組數量已達上限 ${MAX_ROLES} 個`);
@@ -63,6 +67,7 @@ async function addRole({ roleId, label, emoji, style }) {
         label: label.slice(0, 80),
         emoji: emoji || null,
         style: normalizedStyle,
+        exclusive: exclusive !== false,
     });
     await saveConfig(cfg);
     return cfg;
@@ -85,20 +90,38 @@ async function listRoles() {
 }
 
 function buildMessagePayload(cfg) {
+    const hasExclusive = cfg.roles.some(r => r.exclusive !== false);
+    const hasIndependent = cfg.roles.some(r => r.exclusive === false);
+
+    const descLines = [];
+    if (hasExclusive) {
+        descLines.push('🔸 **會員組**：一次只能屬於一個，點擊會切換。');
+    }
+    if (hasIndependent) {
+        descLines.push('🔹 **可並存身分組**（如每日任務）：可自由加入，不影響其他身分組。');
+    }
+    descLines.push('點擊按鈕加入，再點一次相同按鈕即可取消。');
+
     const embed = new EmbedBuilder()
-        .setTitle('🎭 會員組選擇')
+        .setTitle('🎭 身分組選擇')
         .setColor(0x5865F2)
         .setDescription(
             cfg.roles.length === 0
-                ? '目前還沒有設定任何會員組。'
-                : '點擊下方按鈕選擇你的會員組。\n再點一次相同按鈕可取消。\n一次只能屬於一個會員組。'
+                ? '目前還沒有設定任何身分組。'
+                : descLines.join('\n')
         );
 
+    // 互斥的排前面，可並存的排後面，避免混在同一列造成誤點
+    const ordered = [
+        ...cfg.roles.filter(r => r.exclusive !== false),
+        ...cfg.roles.filter(r => r.exclusive === false),
+    ];
+
     const rows = [];
-    if (cfg.roles.length > 0) {
-        for (let i = 0; i < cfg.roles.length; i += 5) {
+    if (ordered.length > 0) {
+        for (let i = 0; i < ordered.length; i += 5) {
             const row = new ActionRowBuilder();
-            for (const r of cfg.roles.slice(i, i + 5)) {
+            for (const r of ordered.slice(i, i + 5)) {
                 const btn = new ButtonBuilder()
                     .setCustomId(`${CUSTOM_ID_PREFIX}${r.roleId}`)
                     .setLabel(r.label)
@@ -182,19 +205,26 @@ async function handleButtonClick(interaction) {
     }
 
     const alreadyHas = member.roles.cache.has(targetRoleId);
+    const exclusiveIds = new Set(
+        cfg.roles.filter(r => r.exclusive !== false).map(r => r.roleId)
+    );
+    const targetExclusive = exclusiveIds.has(targetRoleId);
 
     try {
         if (alreadyHas) {
-            await member.roles.remove(targetRoleId, '會員組選擇器：取消');
+            await member.roles.remove(targetRoleId, '身分組選擇器：取消');
             await interaction.reply({ content: `✅ 已取消「${targetRole.name}」`, ephemeral: true });
         } else {
-            const toRemove = [...member.roles.cache.keys()].filter(
-                id => id !== targetRoleId && managed.has(id)
-            );
-            if (toRemove.length > 0) {
-                await member.roles.remove(toRemove, '會員組選擇器：互斥移除');
+            // 只有互斥身分組才會移除其他互斥身分組；可並存身分組（每日任務）直接加入
+            if (targetExclusive) {
+                const toRemove = [...member.roles.cache.keys()].filter(
+                    id => id !== targetRoleId && exclusiveIds.has(id)
+                );
+                if (toRemove.length > 0) {
+                    await member.roles.remove(toRemove, '身分組選擇器：互斥移除');
+                }
             }
-            await member.roles.add(targetRoleId, '會員組選擇器：加入');
+            await member.roles.add(targetRoleId, '身分組選擇器：加入');
             await interaction.reply({ content: `✅ 已加入「${targetRole.name}」`, ephemeral: true });
         }
     } catch (err) {

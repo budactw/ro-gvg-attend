@@ -99,6 +99,11 @@ const commands = [
                     { name: '綠色 Success', value: 'Success' },
                     { name: '紅色 Danger', value: 'Danger' },
                 )
+        )
+        .addBooleanOption(option =>
+            option.setName('standalone')
+                .setDescription('可與其他身分組並存、可自由加入退出（每日任務組請設為 True）')
+                .setRequired(false)
         ),
 
     new SlashCommandBuilder()
