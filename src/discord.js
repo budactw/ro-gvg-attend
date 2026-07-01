@@ -308,11 +308,13 @@ async function handleRolePickerAdd(interaction) {
     const label = interaction.options.getString('label', true);
     const emoji = interaction.options.getString('emoji');
     const style = interaction.options.getString('style');
+    const standalone = interaction.options.getBoolean('standalone') ?? false;
 
     try {
-        await rolepicker.addRole({ roleId: role.id, label, emoji, style });
+        await rolepicker.addRole({ roleId: role.id, label, emoji, style, exclusive: !standalone });
+        const typeText = standalone ? '可並存身分組（可自由加入退出、不互斥）' : '會員組（互斥）';
         await interaction.reply({
-            content: `✅ 已將 **${role.name}** 加入會員組清單（按鈕文字：${label}）。可執行 \`/rolepicker-post\` 更新訊息。`,
+            content: `✅ 已將 **${role.name}** 加入清單，類型：${typeText}（按鈕文字：${label}）。可執行 \`/rolepicker-post\` 更新訊息。`,
             ephemeral: true,
         });
     } catch (err) {
@@ -345,7 +347,8 @@ async function handleRolePickerList(interaction) {
         const guildRole = interaction.guild.roles.cache.get(r.roleId);
         const name = guildRole ? guildRole.name : `(已刪除的身分組 ${r.roleId})`;
         const emoji = r.emoji ? `${r.emoji} ` : '';
-        return `${i + 1}. ${emoji}**${r.label}** → ${name} [${r.style}]`;
+        const typeTag = r.exclusive === false ? '🔹可並存' : '🔸互斥';
+        return `${i + 1}. ${emoji}**${r.label}** → ${name} [${r.style}] ${typeTag}`;
     });
     const embed = new EmbedBuilder()
         .setTitle('🎭 會員組清單')
