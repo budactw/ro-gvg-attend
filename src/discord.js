@@ -361,15 +361,17 @@ async function handleRolePickerList(interaction) {
 async function handleRolePickerPost(interaction) {
     const channel = interaction.channel;
     if (!channel || channel.type !== ChannelType.GuildText) {
-        await interaction.reply({ content: '❌ 只能在文字頻道發佈會員組選擇訊息', ephemeral: true });
+        await interaction.reply({ content: '❌ 只能在文字頻道發佈身分組選擇訊息', ephemeral: true });
         return;
     }
+    const scope = interaction.options.getString('type') || 'all';
+    const scopeLabel = scope === 'exclusive' ? '會員組' : scope === 'standalone' ? '每日任務／可並存' : '身分組';
     try {
-        const result = await rolepicker.postOrUpdateMessage(channel);
+        const result = await rolepicker.postOrUpdateMessage(channel, scope);
         await interaction.reply({
             content: result.mode === 'updated'
-                ? '✅ 已更新原有的會員組選擇訊息'
-                : '✅ 已發佈新的會員組選擇訊息',
+                ? `✅ 已更新原有的${scopeLabel}選擇訊息`
+                : `✅ 已發佈新的${scopeLabel}選擇訊息`,
             ephemeral: true,
         });
     } catch (err) {

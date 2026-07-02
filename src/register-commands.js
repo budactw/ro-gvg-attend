@@ -121,8 +121,16 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('rolepicker-post')
-        .setDescription('在目前頻道發佈或刷新會員組選擇訊息')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+        .setDescription('在目前頻道發佈或刷新身分組選擇訊息')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+        .addStringOption(option =>
+            option.setName('type').setDescription('要發佈哪一種選單（預設全部）').setRequired(false)
+                .addChoices(
+                    { name: '全部（會員組＋可並存放同一則）', value: 'all' },
+                    { name: '只發會員組（互斥）', value: 'exclusive' },
+                    { name: '只發每日任務／可並存', value: 'standalone' },
+                )
+        ),
 ].map(command => command.toJSON());
 
 async function registerCommands() {

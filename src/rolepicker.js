@@ -45,6 +45,10 @@ async function loadConfig() {
     for (const r of parsed.roles) {
         if (r.exclusive === undefined) r.exclusive = true;
     }
+    // 每個範圍（all / exclusive / standalone）各記一則訊息，彼此獨立
+    if (!parsed.messages || typeof parsed.messages !== 'object') parsed.messages = {};
+    // 舊版單一 message 視為「全部」那則
+    if (parsed.message && !parsed.messages.all) parsed.messages.all = parsed.message;
     return parsed;
 }
 
@@ -89,9 +93,21 @@ async function listRoles() {
     return cfg.roles;
 }
 
-function buildMessagePayload(cfg) {
-    const hasExclusive = cfg.roles.some(r => r.exclusive !== false);
-    const hasIndependent = cfg.roles.some(r => r.exclusive === false);
+const SCOPES = ['all', 'exclusive', 'standalone'];
+
+// 依範圍取出要顯示的身分組（互斥排前、可並存排後）
+function rolesForScope(cfg, scope) {
+    const exclusive = cfg.roles.filter(r => r.exclusive !== false);
+    const standalone = cfg.roles.filter(r => r.exclusive === false);
+    if (scope === 'exclusive') return exclusive;
+    if (scope === 'standalone') return standalone;
+    return [...exclusive, ...standalone];
+}
+
+function buildMessagePayload(cfg, scope = 'all') {
+    const ordered = rolesForScope(cfg, scope);
+    const hasExclusive = ordered.some(r => r.exclusive !== false);
+    const hasIndependent = ordered.some(r => r.exclusive === false);
 
     const descLines = [];
     if (hasExclusive) {
@@ -102,20 +118,20 @@ function buildMessagePayload(cfg) {
     }
     descLines.push('點擊按鈕加入，再點一次相同按鈕即可取消。');
 
+    const title = scope === 'exclusive'
+        ? '🎭 會員組選擇'
+        : scope === 'standalone'
+            ? '⚔️ 每日任務 / 可並存身分組'
+            : '🎭 身分組選擇';
+
     const embed = new EmbedBuilder()
-        .setTitle('🎭 身分組選擇')
+        .setTitle(title)
         .setColor(0x5865F2)
         .setDescription(
-            cfg.roles.length === 0
+            ordered.length === 0
                 ? '目前還沒有設定任何身分組。'
                 : descLines.join('\n')
         );
-
-    // 互斥的排前面，可並存的排後面，避免混在同一列造成誤點
-    const ordered = [
-        ...cfg.roles.filter(r => r.exclusive !== false),
-        ...cfg.roles.filter(r => r.exclusive === false),
-    ];
 
     const rows = [];
     if (ordered.length > 0) {
@@ -138,16 +154,22 @@ function buildMessagePayload(cfg) {
     return { embeds: [embed], components: rows };
 }
 
-async function postOrUpdateMessage(channel) {
+async function postOrUpdateMessage(channel, scope = 'all') {
+    if (!SCOPES.includes(scope)) scope = 'all';
     const cfg = await loadConfig();
     if (cfg.roles.length > MAX_ROLES) {
         throw new Error(`會員組數量超過 ${MAX_ROLES} 個上限`);
     }
-    const payload = buildMessagePayload(cfg);
+    if (rolesForScope(cfg, scope).length === 0) {
+        const label = scope === 'standalone' ? '可並存（每日任務）身分組' : scope === 'exclusive' ? '會員組' : '身分組';
+        throw new Error(`目前沒有${label}可以發佈，請先用 /rolepicker-add 新增`);
+    }
+    const payload = buildMessagePayload(cfg, scope);
 
-    if (cfg.message && cfg.message.channelId === channel.id && cfg.message.messageId) {
+    const slot = cfg.messages[scope];
+    if (slot && slot.channelId === channel.id && slot.messageId) {
         try {
-            const existing = await channel.messages.fetch(cfg.message.messageId);
+            const existing = await channel.messages.fetch(slot.messageId);
             await existing.edit(payload);
             return { mode: 'updated', messageId: existing.id };
         } catch {
@@ -156,20 +178,24 @@ async function postOrUpdateMessage(channel) {
     }
 
     const sent = await channel.send(payload);
-    cfg.message = { channelId: channel.id, messageId: sent.id };
+    cfg.messages[scope] = { channelId: channel.id, messageId: sent.id };
+    if (scope === 'all') cfg.message = cfg.messages.all; // 保留舊欄位相容
     await saveConfig(cfg);
     return { mode: 'created', messageId: sent.id };
 }
 
 async function refreshMessage(client) {
     const cfg = await loadConfig();
-    if (!cfg.message || !cfg.message.channelId || !cfg.message.messageId) return;
-    try {
-        const channel = await client.channels.fetch(cfg.message.channelId);
-        const msg = await channel.messages.fetch(cfg.message.messageId);
-        await msg.edit(buildMessagePayload(cfg));
-    } catch (err) {
-        console.error('刷新會員組選擇訊息失敗:', err.message);
+    for (const scope of SCOPES) {
+        const slot = cfg.messages[scope];
+        if (!slot || !slot.channelId || !slot.messageId) continue;
+        try {
+            const channel = await client.channels.fetch(slot.channelId);
+            const msg = await channel.messages.fetch(slot.messageId);
+            await msg.edit(buildMessagePayload(cfg, scope));
+        } catch (err) {
+            console.error(`刷新身分組選擇訊息（${scope}）失敗:`, err.message);
+        }
     }
 }
 
@@ -240,6 +266,7 @@ async function handleButtonClick(interaction) {
 module.exports = {
     CUSTOM_ID_PREFIX,
     VALID_STYLES,
+    SCOPES,
     MAX_ROLES,
     loadConfig,
     addRole,
